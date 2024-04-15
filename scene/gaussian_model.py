@@ -24,6 +24,7 @@ from utils.general_utils import strip_symmetric, build_scaling_rotation
 class GaussianModel:
 
     def setup_functions(self):
+
         def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
             L = build_scaling_rotation(scaling_modifier * scaling, rotation)
             actual_covariance = L @ L.transpose(1, 2)
@@ -58,7 +59,7 @@ class GaussianModel:
         self.spatial_lr_scale = 0
         self.setup_functions()
 
-    def capture(self):
+    def capture(self):   # 返回自己的所有信息
         return (
             self.active_sh_degree,
             self._xyz,
@@ -160,13 +161,16 @@ class GaussianModel:
             {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"}
         ]
 
+
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
         self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.position_lr_init*self.spatial_lr_scale,
                                                     lr_final=training_args.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=training_args.position_lr_delay_mult,
                                                     max_steps=training_args.position_lr_max_steps)
 
-    def update_learning_rate(self, iteration):
+
+
+    def update_learning_rate(self, iteration):    # 更改学习率的代码
         ''' Learning rate scheduling per step '''
         for param_group in self.optimizer.param_groups:
             if param_group["name"] == "xyz":
@@ -187,6 +191,8 @@ class GaussianModel:
         for i in range(self._rotation.shape[1]):
             l.append('rot_{}'.format(i))
         return l
+
+
 
     def save_ply(self, path):
         mkdir_p(os.path.dirname(path))
@@ -347,6 +353,7 @@ class GaussianModel:
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
     def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
+
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
