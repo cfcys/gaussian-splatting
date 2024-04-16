@@ -24,6 +24,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     Render the scene. 
     
     Background tensor (bg_color) must be on GPU!
+
+    这里的pipe是什么意思
     """
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
     # 创建一个与输入点云（高斯模型）大小相同的零张量，用于记录屏幕空间中的点的位置。这个张量将用于计算对于屏幕空间坐标的梯度。
@@ -38,7 +40,6 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     tanfovx = math.tan(viewpoint_camera.FoVx * 0.5)
     tanfovy = math.tan(viewpoint_camera.FoVy * 0.5)
 
-
     # 设置光栅化的配置，包括图像的大小、视场的 tan 值、背景颜色、视图矩阵、投影矩阵等。
     raster_settings = GaussianRasterizationSettings(
         image_height=int(viewpoint_camera.image_height),
@@ -49,7 +50,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         scale_modifier=scaling_modifier,
         viewmatrix=viewpoint_camera.world_view_transform,
         projmatrix=viewpoint_camera.full_proj_transform,
-        sh_degree=pc.active_sh_degree,
+        sh_degree=pc.active_sh_degree,   # 这里的sh代表球谐函数
         campos=viewpoint_camera.camera_center,
         prefiltered=False,
         debug=pipe.debug
@@ -69,7 +70,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     cov3D_precomp = None
     if pipe.compute_cov3D_python:   # 如果提供了就直接获取
         cov3D_precomp = pc.get_covariance(scaling_modifier)
-    else:                           # 如果没有直接提供，就通过一个放射变换去获取？
+    else:                           # 如果没有直接提供，就通过一个仿射变换去获取？
         scales = pc.get_scaling
         rotations = pc.get_rotation
 
@@ -78,10 +79,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     shs = None
     colors_precomp = None
     if override_color is None:
-        if pipe.convert_SHs_python:
+        if pipe.convert_SHs_python:   # SH是什么，是球谐函数
             shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)  # 将SH特征的形状调整为（batch_size * num_points，3，(max_sh_degree+1)**2）。
             dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
-            dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
+            dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True) 
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
         else:
@@ -90,6 +91,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
+    # 调用光栅化器，将高斯分布投影到屏幕上，获得渲染图像和每个高斯分布在屏幕上的半径。  这个操作似乎是在diff_gaussian_rasterization这个库中实现的，这个库有空去看看ai葵的讲解
     rendered_image, radii = rasterizer(
         means3D = means3D,
         means2D = means2D,
@@ -102,6 +104,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
+    # 返回一个字典，包含渲染的图像、屏幕空间坐标、可见性过滤器（根据半径判断是否可见）以及每个高斯分布在屏幕上的半径。
     return {"render": rendered_image,
             "viewspace_points": screenspace_points,
             "visibility_filter" : radii > 0,
