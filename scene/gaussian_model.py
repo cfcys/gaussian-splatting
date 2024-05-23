@@ -123,16 +123,25 @@ class GaussianModel:
             self.active_sh_degree += 1
 
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
-        self.spatial_lr_scale = spatial_lr_scale
+        self.spatial_lr_scale = spatial_lr_scale   # ？
         fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
+        # 稀疏点云的3D坐标
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+        # 球谐的直流分量，大小为(N,3)
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
+        """
+        R,G,B三通道的球谐的所有系数，大小为(N,3,(最大球谐系数 + 1))
+        """
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
         dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        # 在每个块内确定3个最近邻居和它们的平均距离。用平均距离作为Gaussian的scale。
+        # KNN意思是K-Nearest Neighbor，即求每一点最近的K个点。
+		# simple_knn.cu中令k=3，求得每一点最近的三个点距该点的平均距离。
+        
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
